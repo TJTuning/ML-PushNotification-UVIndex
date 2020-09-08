@@ -1,0 +1,160 @@
+import requests, json, mysql.connector, datetime, csv
+from notify_run import Notify
+import os
+import sys
+import pandas as pd
+import numpy as np
+import statistics
+from sklearn.model_selection import train_test_split
+from sklearn import tree
+from sklearn import linear_model,neighbors
+from sklearn.linear_model import LinearRegression
+from sklearn import metrics
+import matplotlib.pyplot as plt 
+
+notify = Notify()
+
+api_url = "https://api.weatherbit.io/v2.0/current?city=Hounslow,GB&key=70e8568d8d834cfc93a9a3c93e50d817"
+response = requests.get(api_url)
+x = response.json() 
+y = x["data"]
+
+weather_station = y[0]["station"]
+current_temperature = y[0]["temp"] 
+current_pressure = y[0]["pres"]
+solar_radiation = y[0]["solar_rad"]
+current_wind_speed = y[0]["wind_spd"]
+precipitation = y[0]["precip"]
+sunrise_time = y[0]["sunrise"]
+sunset_time = y[0]["sunset"]
+current_uvindex = y[0]["uv"]
+recorded_datetime = y[0]["ob_time"]
+current_datetime = datetime.datetime.now()
+
+print(" Name of weather station = " + str(weather_station))
+print(" Temperature (in kelvin unit) = " + str(current_temperature))
+print(" Atmospheric pressure (in hPa unit) = " + str(current_pressure))
+print(" Solar radiation = " + str(solar_radiation))
+print(" Wind speed = " + str(current_wind_speed))
+print(" Precipitation = " + str(precipitation))
+print(" Time of sunrise = " + str(sunrise_time))
+print(" Time of sunset = " + str(sunset_time))
+print(" UV Index = " + str(current_uvindex))
+print(" Recorded DateTime = " + str(recorded_datetime))
+print(" Current DateTime = " + str(current_datetime))
+
+db_conn = mysql.connector.connect(user='', password='',
+                              host='',
+                              database='Weatherdb')
+mycursor = db_conn.cursor()
+sql_insert = "INSERT INTO `ArchiveWeatherInfo` (`Station`, `Temperature`, `Pressure`, `SolarRadiation`, `WindSpeed`, `Precipitation`, `SunriseTime`, `SunsetTime`, `UVIndex`, `RecordedDatetime`, `CurrentDatetime`) VALUES ('"+str(weather_station)+"', '"+str(current_temperature)+"', '"+str(current_pressure)+"', '"+str(solar_radiation)+"', '"+str(current_wind_speed)+"', '"+str(precipitation)+"', '"+str(sunrise_time)+"', '"+str(sunset_time)+"', '"+str(current_uvindex)+"', '"+str(recorded_datetime)+"', '"+str(current_datetime)+"')";
+mycursor.execute(sql_insert)
+print(mycursor.rowcount, "record(s) affected")
+sql_selectweekaverage = "SELECT AVG(UVIndex) as AverageUVIndex FROM (SELECT * FROM `ArchiveWeatherInfo` WHERE (RIGHT(RecordedDatetime, 5) BETWEEN SunriseTime AND SunsetTime) AND (LEFT(RecordedDatetime,10) BETWEEN (SELECT DATE_SUB(MAX(LEFT(RecordedDatetime,10)), INTERVAL 7 DAY) FROM `ArchiveWeatherInfo`) AND (SELECT MAX(LEFT(RecordedDatetime,10)) FROM `ArchiveWeatherInfo`)))Q"
+mycursor.execute(sql_selectweekaverage)
+average_uvindex = mycursor.fetchone()
+
+for result in average_uvindex:
+ print(result)
+if float(result) < 3:
+ notify.send('Vitamin D levels are potentially low, consider taking supplements (based on current UV Index average for the week: ' + str(result) + ')', 'https://notify.run/c/LIWqWihzkOc79atP')
+
+sql_selectallday = "SELECT * FROM `ArchiveWeatherInfo` WHERE RIGHT(RecordedDatetime, 5) BETWEEN SunriseTime AND SunsetTime"
+db_conn.commit()
+mycursor.execute(sql_selectallday)
+rows = mycursor.fetchall()
+fp =  open('UpToDateWeatherStationData.csv', 'w', newline='')
+column_names = [i[0] for i in mycursor.description]
+myFile = csv.writer(fp)
+myFile.writerow(column_names)
+myFile.writerows(rows)
+fp.close()
+db_conn.close()
+
+
+
+path = "UpToDateWeatherStationData.csv"
+dataf = pd.read_csv(path)
+print(dataf.head)
+
+x = dataf[['Temperature','Pressure', 'SolarRadiation', 'WindSpeed', 'Precipitation', 'UVIndex' ]]
+print(x)
+
+x.corr()
+
+# Predicting UV Index using linear regression
+XC = np.array(x.drop(['UVIndex'],1))
+yC = np.array(x['UVIndex'])
+X_trainC, X_testC, y_trainC , y_testC = train_test_split(XC,yC,test_size=0.3)
+
+uvindex_clf=linear_model.LinearRegression()
+uvindex_clf.fit(X_trainC,y_trainC)
+predicted_uvindex=uvindex_clf.predict(X_testC)
+print('UV Index values: ' + str(predicted_uvindex))
+print('UV Index average: ' + str(statistics.mean(predicted_uvindex)))
+uvindex_accuracy=uvindex_clf.score(X_testC,y_testC)
+print('UV Index accuracy score using Linear regression: ',uvindex_accuracy*100)
+
+# Predicting UV Index using random forest method
+clf_tree = tree.DecisionTreeRegressor()
+clf_tree.fit(X_trainC,y_trainC)
+uvindex_accuracy_tree=clf_tree.score(X_testC,y_testC)
+print(clf_tree.predict(X_testC))
+
+print('UV Index accuracy score using Tree regression: ',uvindex_accuracy_tree*100)
+
+
+
+from sklearn.model_selection import KFold
+X = XC
+y = yC
+kf = KFold(n_splits=5)
+kf.get_n_splits(X, y)
+print(kf)
+
+linreg = []
+ranfor = []
+
+KFold(n_splits=5, random_state=None, shuffle=False)
+for train_index, test_index in kf.split(X, y):
+    print("TRAIN:", train_index, "TEST:", test_index)
+    X_train, X_test = X[train_index], X[test_index]
+    y_train, y_test = y[train_index], y[test_index]
+
+    uvindex_clf.fit(X_train,y_train)
+    predicted_uvindex_usingkfold=uvindex_clf.predict(X_test)
+    uvindex_accuracy=uvindex_clf.score(X_test,y_test)
+
+    print('UV Index values: ' + str(predicted_uvindex_usingkfold))
+    print('UV Index average: ' + str(statistics.mean(predicted_uvindex_usingkfold)))
+
+    uvindex_accuracypercent = uvindex_accuracy*100
+    print('UV Index accuracy score using Linear regression: ',uvindex_accuracypercent)
+
+    linreg.append(uvindex_accuracypercent)
+
+    # Predicting UV Index using random forest method
+    clf_tree = tree.DecisionTreeRegressor()
+    clf_tree.fit(X_trainC,y_trainC)
+    uvindex_accuracy_tree=clf_tree.score(X_testC,y_testC)
+
+    predicted_uvindex_usingkfold_randomforest = clf_tree.predict(X_testC)
+    print('UV Index values (random forest method): ' + str(predicted_uvindex_usingkfold_randomforest))
+    print('UV Index average (random forest method): ' + str(statistics.mean(predicted_uvindex_usingkfold_randomforest)))
+    
+    uvindex_accuracy_treepercent = uvindex_accuracy_tree*100
+
+    print('UV Index accuracy score using Tree regression: ',uvindex_accuracy_treepercent)
+
+    ranfor.append(uvindex_accuracy_treepercent)
+
+
+average_linreg = sum(linreg)/ len(linreg)
+average_ranfor = sum(ranfor)/ len(ranfor)
+
+print('UV Index accuracy score using Linear regression 5-fold CV Average: ',average_linreg)
+print('UV Index accuracy score using Tree regression 5-fold CV Average: ',average_ranfor)
+
+
+if float(statistics.mean(predicted_uvindex_usingkfold_randomforest)) < 3:
+ notify.send('BASED ON TREE REGRESSION 5-fold CV AVERAGE: Vitamin D levels are potentially low, consider taking supplements (UV Index average: ' + str(statistics.mean(predicted_uvindex_usingkfold_randomforest)) + ', accuracy score: ' + str(average_ranfor) + ')', 'https://notify.run/c/LIWqWihzkOc79atP')

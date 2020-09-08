@@ -1,0 +1,31 @@
+=============================================================================================================================================================
+
+TITLE: Auto-Push Notification Service for Vitamin D Deficiency Based on UV Index (And an Attempt To Create Predictive Models Using Data From A Weather API)
+
+1) Linear regression model to predict UV index
+2) After each run, calculate average of predicted UV index is low and then send push notification
+3) Sequentially a linear regression model will run based on the training and testing splits of the historical dataset
+
+============================================================================================================================================================
+
+pip3 install notify-run
+
+mysql -u USERNAME -p
+
+sudo /etc/init.d/mysql restart
+sudo mysql -u root -p
+GRANT ALL PRIVILEGES ON *.* TO 'USERNAME'@'%' IDENTIFIED BY 'PASSWORD' WITH GRANT OPTION;
+
+sudo chmod a+rwx /etc/mysql/mariadb.conf.d
+
+sudo netstat -ln | grep 3306
+
+sudo apt-get update 
+sudo apt-get install gfortran libatlas-base-dev libopenblas-dev liblapack-dev -y
+
+pip3 install scikit-learn --index-url https://piwheels.org/simple
+
+
+python3 /usr/bin/AutoPushNotificationServiceUsingPredictiveModelling.py
+
+==========================================================================================================================================================
