@@ -7,5 +7,5 @@ Auto-Push Notification Service for Vitamin D Deficiency Based on UV Index (And a
 2) After each run, calculate average of predicted UV index throughout 7 days and if low ( < 3 ) send push notification to phone
 3) Sequentially a linear regression model will run based on the training and testing splits of the historical dataset
 
-Script will run on a 5-min interval using cronjob (time-based job scheduler)
+Script will run on a 5-min interval using a cron job (time-based job scheduler)
 
